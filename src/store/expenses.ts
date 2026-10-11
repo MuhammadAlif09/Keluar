@@ -1,12 +1,12 @@
 import { create } from "zustand";
-import type { CategoryId } from "@/lib/categories";
+import type { CategoryId } from "../lib/categories";
 import {
   loadLedger,
   saveLedger,
   type StoredExpense,
   type StoredLedger,
-} from "@/lib/ledger-storage";
-import type { MarkId } from "@/lib/marks";
+} from "../lib/ledger-storage";
+import type { MarkId } from "../lib/marks";
 
 export type Expense = StoredExpense;
 
@@ -19,22 +19,31 @@ export type ExpenseDraft = {
   mark: MarkId | "";
 };
 
+export type SaveStatus = "saved" | "saving" | "error";
+
 type ExpenseState = StoredLedger & {
-  addExpense: (draft: ExpenseDraft) => void;
-  updateExpense: (id: string, draft: ExpenseDraft) => void;
-  deleteExpense: (id: string) => void;
-  setBudget: (amount: number) => void;
-  clearAll: () => void;
+  saveStatus: SaveStatus;
+  addExpense: (draft: ExpenseDraft) => boolean;
+  updateExpense: (id: string, draft: ExpenseDraft) => boolean;
+  deleteExpense: (id: string) => boolean;
+  setBudget: (amount: number) => boolean;
+  clearAll: () => boolean;
+  retrySave: () => boolean;
   seedIfEmpty: () => void;
 };
 
-function persist(state: ExpenseState) {
-  saveLedger({
+function persist(
+  state: ExpenseState,
+  set: (partial: Partial<ExpenseState>) => void,
+): boolean {
+  const ok = saveLedger({
     expenses: state.expenses,
     monthlyBudget: state.monthlyBudget,
     hasSeeded: state.hasSeeded,
     lastPayer: state.lastPayer,
   });
+  set({ saveStatus: ok ? "saved" : "error" });
+  return ok;
 }
 
 function fromDraft(draft: ExpenseDraft): Omit<Expense, "id" | "createdAt"> {
@@ -53,6 +62,7 @@ export const useExpenseStore = create<ExpenseState>()((set, get) => ({
   monthlyBudget: 4_000_000,
   hasSeeded: false,
   lastPayer: "",
+  saveStatus: "saved",
   addExpense: (draft) => {
     const fields = fromDraft(draft);
     const expense: Expense = {
@@ -64,8 +74,9 @@ export const useExpenseStore = create<ExpenseState>()((set, get) => ({
       expenses: [expense, ...get().expenses],
       lastPayer: fields.payer,
       hasSeeded: true,
+      saveStatus: "saving",
     });
-    persist(get());
+    return persist(get(), set);
   },
   updateExpense: (id, draft) => {
     const fields = fromDraft(draft);
@@ -74,20 +85,34 @@ export const useExpenseStore = create<ExpenseState>()((set, get) => ({
         item.id === id ? { ...item, ...fields } : item,
       ),
       lastPayer: fields.payer,
+      saveStatus: "saving",
     });
-    persist(get());
+    return persist(get(), set);
   },
   deleteExpense: (id) => {
-    set({ expenses: get().expenses.filter((item) => item.id !== id) });
-    persist(get());
+    set({
+      expenses: get().expenses.filter((item) => item.id !== id),
+      saveStatus: "saving",
+    });
+    return persist(get(), set);
   },
   setBudget: (amount) => {
-    set({ monthlyBudget: Math.max(0, Math.round(amount)) });
-    persist(get());
+    set({
+      monthlyBudget: Math.max(0, Math.round(amount)),
+      saveStatus: "saving",
+    });
+    return persist(get(), set);
   },
   clearAll: () => {
-    set({ expenses: [], hasSeeded: true });
-    persist(get());
+    set({
+      expenses: [],
+      hasSeeded: true,
+      saveStatus: "saving",
+    });
+    return persist(get(), set);
+  },
+  retrySave: () => {
+    return persist(get(), set);
   },
   seedIfEmpty: () => {
     // Demo seeding dihapus sesuai instruksi

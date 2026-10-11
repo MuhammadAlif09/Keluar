@@ -1,5 +1,5 @@
-import { CATEGORY_IDS, type CategoryId } from "@/lib/categories";
-import { isMarkId, type MarkId } from "@/lib/marks";
+import { CATEGORY_IDS, type CategoryId } from "./categories";
+import { isMarkId, type MarkId } from "./marks";
 import { toast } from "sonner";
 
 export const LEDGER_KEY = "keluar-ledger-v2";
@@ -63,9 +63,10 @@ function emptyLedger(): StoredLedger {
   };
 }
 
-export function saveLedger(data: StoredLedger) {
-  if (typeof window === "undefined") return;
+export function saveLedger(data: StoredLedger): boolean {
+  if (typeof window === "undefined") return false;
   try {
+    if (!window.localStorage) return false;
     const payload: StoredLedger = {
       expenses: data.expenses,
       monthlyBudget: data.monthlyBudget,
@@ -73,23 +74,26 @@ export function saveLedger(data: StoredLedger) {
       lastPayer: data.lastPayer,
     };
     window.localStorage.setItem(LEDGER_KEY, JSON.stringify(payload));
+    return true;
   } catch (err) {
     console.error("Gagal menyimpan ke penyimpanan lokal:", err);
     toast.error("Gagal menyimpan data ke penyimpanan lokal");
+    return false;
   }
 }
 
 export function loadLedger(): StoredLedger {
   if (typeof window === "undefined") return emptyLedger();
 
-  const raw = window.localStorage.getItem(LEDGER_KEY) ?? window.localStorage.getItem(LEGACY_KEY);
-  if (!raw) {
-    const empty = emptyLedger();
-    saveLedger(empty);
-    return empty;
-  }
-
   try {
+    const storage = window.localStorage;
+    if (!storage) return emptyLedger();
+
+    const raw = storage.getItem(LEDGER_KEY) ?? storage.getItem(LEGACY_KEY);
+    if (!raw) {
+      return emptyLedger();
+    }
+
     const state = unwrapPersist(raw);
     if (!state || typeof state !== "object") return emptyLedger();
     const row = state as Record<string, unknown>;
@@ -105,9 +109,19 @@ export function loadLedger(): StoredLedger {
       hasSeeded: Boolean(row.hasSeeded) || expenses.length > 0,
       lastPayer: typeof row.lastPayer === "string" ? row.lastPayer : "",
     };
-    saveLedger(ledger);
+
+    // Migrasi data lama jika membaca dari LEGACY_KEY
+    if (!storage.getItem(LEDGER_KEY) && storage.getItem(LEGACY_KEY)) {
+      try {
+        storage.setItem(LEDGER_KEY, JSON.stringify(ledger));
+      } catch {
+        // Abaikan jika migrasi tulis gagal, data tetap aktif di memori
+      }
+    }
+
     return ledger;
-  } catch {
+  } catch (err) {
+    console.warn("Gagal membaca dari penyimpanan lokal:", err);
     return emptyLedger();
   }
 }

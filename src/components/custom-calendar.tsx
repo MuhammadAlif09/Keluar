@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   addMonths,
   format,
@@ -38,6 +38,30 @@ export function CustomCalendar({
 
   // State bulan yang sedang dilihat di kalender
   const [viewDate, setViewDate] = useState<Date>(selectedDate);
+
+  // Sinkronisasi viewDate ketika prop value berubah
+  useEffect(() => {
+    try {
+      const parsed = parseISO(value);
+      if (!isNaN(parsed.getTime())) {
+        setViewDate(parsed);
+      }
+    } catch {
+      // fallback
+    }
+  }, [value]);
+
+  // Tutup kalender saat tombol Escape ditekan
+  useEffect(() => {
+    if (!onClose) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
 
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();

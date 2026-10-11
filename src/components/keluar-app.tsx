@@ -65,6 +65,8 @@ export function KeluarApp() {
   const deleteExpense = useExpenseStore((s) => s.deleteExpense);
   const setBudget = useExpenseStore((s) => s.setBudget);
   const clearAll = useExpenseStore((s) => s.clearAll);
+  const saveStatus = useExpenseStore((s) => s.saveStatus);
+  const retrySave = useExpenseStore((s) => s.retrySave);
   const [view, setView] = useState(currentMonth);
   const [filter, setFilter] = useState<FilterId>("all");
   const [formOpen, setFormOpen] = useState(false);
@@ -182,6 +184,21 @@ export function KeluarApp() {
           </Button>
         </div>
       </header>
+
+      {saveStatus === "error" && (
+        <div className="mx-auto max-w-5xl px-4 pt-2">
+          <div className="flex items-center justify-between gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-xs text-destructive">
+            <span>Penyimpanan lokal tidak tersedia atau gagal menyimpan data.</span>
+            <button
+              type="button"
+              onClick={() => retrySave()}
+              className="shrink-0 font-semibold underline hover:no-underline cursor-pointer"
+            >
+              Coba lagi
+            </button>
+          </div>
+        </div>
+      )}
 
       <main className="mx-auto grid max-w-5xl gap-6 px-4 pt-4 lg:grid-cols-2 lg:items-start">
         <section className="flex flex-col gap-4">
