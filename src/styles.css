@@ -193,12 +193,16 @@
   }
 }
 
-.drawer-content-sheet[data-state="open"] {
+.drawer-content-sheet[data-morph="true"] {
+  animation: none !important;
+}
+
+.drawer-content-sheet[data-state="open"]:not([data-morph="true"]) {
   animation: drawerSlideUp 340ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
   will-change: transform, opacity;
 }
 
-.drawer-content-sheet[data-state="closed"] {
+.drawer-content-sheet[data-state="closed"]:not([data-morph="true"]) {
   animation: drawerSlideDown 260ms cubic-bezier(0.32, 0, 0.67, 0) forwards;
   will-change: transform, opacity;
 }

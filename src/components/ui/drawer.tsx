@@ -1,5 +1,6 @@
 import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const DrawerTrigger = DialogPrimitive.Trigger;
@@ -9,6 +10,9 @@ const DrawerClose = DialogPrimitive.Close;
 type DrawerContextType = {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  triggerRef?: React.RefObject<HTMLElement | null>;
+  requestClose?: () => void;
+  _registerRequestClose?: (fn: () => void) => void;
 };
 
 const DrawerContext = React.createContext<DrawerContextType>({});
@@ -20,6 +24,7 @@ type DragContextType = {
     onPointerUp: (e: React.PointerEvent<HTMLDivElement>) => void;
     onPointerCancel: (e: React.PointerEvent<HTMLDivElement>) => void;
   };
+  requestClose: () => void;
 };
 
 const DrawerDragContext = React.createContext<DragContextType | null>(null);
@@ -27,11 +32,36 @@ const DrawerDragContext = React.createContext<DragContextType | null>(null);
 function Drawer({
   open,
   onOpenChange,
+  triggerRef,
   children,
   ...props
-}: React.ComponentProps<typeof DialogPrimitive.Root>) {
+}: React.ComponentProps<typeof DialogPrimitive.Root> & {
+  triggerRef?: React.RefObject<HTMLElement | null>;
+}) {
+  const requestCloseRef = React.useRef<(() => void) | null>(null);
+
+  const requestClose = React.useCallback(() => {
+    if (requestCloseRef.current) {
+      requestCloseRef.current();
+    } else {
+      onOpenChange?.(false);
+    }
+  }, [onOpenChange]);
+
+  const registerRequestClose = React.useCallback((fn: () => void) => {
+    requestCloseRef.current = fn;
+  }, []);
+
   return (
-    <DrawerContext.Provider value={{ open, onOpenChange }}>
+    <DrawerContext.Provider
+      value={{
+        open,
+        onOpenChange,
+        triggerRef,
+        requestClose,
+        _registerRequestClose: registerRequestClose,
+      }}
+    >
       <DialogPrimitive.Root open={open} onOpenChange={onOpenChange} {...props}>
         {children}
       </DialogPrimitive.Root>
@@ -59,8 +89,13 @@ function DrawerContent({
   children,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content>) {
-  const { onOpenChange } = React.useContext(DrawerContext);
+  const { onOpenChange, triggerRef, _registerRequestClose } =
+    React.useContext(DrawerContext);
   const contentRef = React.useRef<HTMLDivElement>(null);
+  const bodyRef = React.useRef<HTMLDivElement>(null);
+  const isClosingRef = React.useRef(false);
+  const triggerRectRef = React.useRef<DOMRect | null>(null);
+
   const dragRef = React.useRef<{
     isDragging: boolean;
     startY: number;
@@ -75,11 +110,180 @@ function DrawerContent({
     pointerId: null,
   });
 
+  const prefersReducedMotion = React.useMemo(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  }, []);
+
+  // Hitung insets tombol relatif terhadap sheet modal
+  const getInsets = React.useCallback(() => {
+    const content = contentRef.current;
+    const triggerEl = triggerRef?.current;
+    if (!content || !triggerEl) return null;
+
+    const s = content.getBoundingClientRect();
+    const b = triggerRectRef.current || triggerEl.getBoundingClientRect();
+
+    const topInset = Math.max(0, b.top - s.top);
+    const bottomInset = Math.max(0, s.bottom - b.bottom);
+    const leftInset = Math.max(0, b.left - s.left);
+    const rightInset = Math.max(0, s.right - b.right);
+
+    return { topInset, bottomInset, leftInset, rightInset };
+  }, [triggerRef]);
+
+  // Fungsi tutup dengan morph menyusut ke tombol
+  const performClose = React.useCallback(() => {
+    if (isClosingRef.current) return;
+    isClosingRef.current = true;
+
+    const content = contentRef.current;
+    const triggerEl = triggerRef?.current;
+
+    const finalizeClose = () => {
+      if (triggerEl) {
+        triggerEl.style.visibility = "";
+      }
+      onOpenChange?.(false);
+    };
+
+    if (!content) {
+      finalizeClose();
+      return;
+    }
+
+    if (prefersReducedMotion || !triggerEl) {
+      const fadeAnim = content.animate(
+        [{ opacity: 1 }, { opacity: 0 }],
+        { duration: 180, easing: "ease-in", fill: "forwards" },
+      );
+      fadeAnim.onfinish = finalizeClose;
+      return;
+    }
+
+    const insets = getInsets();
+    if (!insets) {
+      finalizeClose();
+      return;
+    }
+
+    const { topInset, bottomInset, leftInset, rightInset } = insets;
+
+    // Fade out form children dengan cepat
+    if (bodyRef.current) {
+      bodyRef.current.animate(
+        [
+          { opacity: 1, transform: "translate3d(0, 0, 0)" },
+          { opacity: 0, transform: "translate3d(0, 10px, 0)" },
+        ],
+        { duration: 160, easing: "ease-in", fill: "forwards" },
+      );
+    }
+
+    // Morph menyusut penuh menjadi bentuk tombol
+    const closeAnim = content.animate(
+      [
+        {
+          clipPath: "inset(0px 0px 0px 0px round 16px 16px 0px 0px)",
+          backgroundColor: "var(--color-card, #faf7f1)",
+        },
+        {
+          clipPath: `inset(${topInset}px ${rightInset}px ${bottomInset}px ${leftInset}px round 12px)`,
+          backgroundColor: "var(--color-primary, #1c4539)",
+        },
+      ],
+      {
+        duration: 380,
+        easing: "cubic-bezier(0.32, 0.72, 0, 1)",
+        fill: "forwards",
+      },
+    );
+
+    closeAnim.onfinish = finalizeClose;
+  }, [getInsets, onOpenChange, prefersReducedMotion, triggerRef]);
+
+  // Daftarkan handler tutup ke context
+  React.useEffect(() => {
+    _registerRequestClose?.(performClose);
+  }, [_registerRequestClose, performClose]);
+
+  // Morph pembuka saat menu pertama kali muncul
+  React.useEffect(() => {
+    const content = contentRef.current;
+    const triggerEl = triggerRef?.current;
+    if (!content) return;
+
+    if (triggerEl) {
+      triggerRectRef.current = triggerEl.getBoundingClientRect();
+      triggerEl.style.visibility = "hidden";
+    }
+
+    if (prefersReducedMotion || !triggerEl) {
+      content.animate([{ opacity: 0 }, { opacity: 1 }], {
+        duration: 200,
+        easing: "ease-out",
+        fill: "forwards",
+      });
+      return;
+    }
+
+    const insets = getInsets();
+    if (!insets) return;
+
+    const { topInset, bottomInset, leftInset, rightInset } = insets;
+
+    // Animasi morph dari posisi & ukuran tombol menuju menu penuh
+    const openAnim = content.animate(
+      [
+        {
+          clipPath: `inset(${topInset}px ${rightInset}px ${bottomInset}px ${leftInset}px round 12px)`,
+          backgroundColor: "var(--color-primary, #1c4539)",
+        },
+        {
+          clipPath: "inset(0px 0px 0px 0px round 16px 16px 0px 0px)",
+          backgroundColor: "var(--color-card, #faf7f1)",
+        },
+      ],
+      {
+        duration: 420,
+        easing: "cubic-bezier(0.32, 0.72, 0, 1)",
+        fill: "forwards",
+      },
+    );
+
+    // Isi form fade-in + naik sedikit mulai di 40% animasi
+    if (bodyRef.current) {
+      bodyRef.current.animate(
+        [
+          { opacity: 0, transform: "translate3d(0, 16px, 0)", offset: 0 },
+          { opacity: 0, transform: "translate3d(0, 12px, 0)", offset: 0.4 },
+          { opacity: 1, transform: "translate3d(0, 0, 0)", offset: 1 },
+        ],
+        {
+          duration: 420,
+          easing: "cubic-bezier(0.32, 0.72, 0, 1)",
+          fill: "forwards",
+        },
+      );
+    }
+
+    openAnim.onfinish = () => {
+      content.style.removeProperty("clip-path");
+      content.style.removeProperty("background-color");
+    };
+
+    return () => {
+      // Pastikan tombol kembali tampil jika unmounted tak terduga
+      if (triggerEl) {
+        triggerEl.style.visibility = "";
+      }
+    };
+  }, [getInsets, prefersReducedMotion, triggerRef]);
+
+  // Drag Gesture Handlers
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    // Hanya tangani tombol mouse utama (kiri) atau touch
-    if (e.button !== 0) return;
+    if (e.button !== 0 || isClosingRef.current) return;
     const target = e.target as HTMLElement;
-    // Jangan tangani jika mengklik tombol atau input interaktif
     if (
       target.closest("button") ||
       target.closest("input") ||
@@ -110,23 +314,37 @@ function DrawerContent({
   };
 
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!dragRef.current.isDragging) return;
+    if (!dragRef.current.isDragging || isClosingRef.current) return;
     const content = contentRef.current;
     if (!content) return;
 
     const deltaY = e.clientY - dragRef.current.startY;
-    let translateY = 0;
+    dragRef.current.currentTranslateY = deltaY;
 
     if (deltaY > 0) {
-      // Menarik ke bawah: langsung ikuti kursor / jari 1:1
-      translateY = deltaY;
-    } else {
-      // Menarik ke atas: efek karet (resistance)
-      translateY = deltaY * 0.15;
-    }
+      // Menarik ke bawah: clip-path ikut mengecil progresif 1:1 mengikuti jari
+      const insets = getInsets();
+      if (insets) {
+        const { topInset, bottomInset, leftInset, rightInset } = insets;
+        const p = Math.min(1, deltaY / Math.max(120, topInset));
+        const curTop = topInset * p;
+        const curBottom = bottomInset * p;
+        const curLeft = leftInset * p;
+        const curRight = rightInset * p;
+        const curRadius = Math.max(12, 16 - 4 * p);
 
-    dragRef.current.currentTranslateY = translateY;
-    content.style.transform = `translate3d(0, ${translateY}px, 0)`;
+        content.style.clipPath = `inset(${curTop}px ${curRight}px ${curBottom}px ${curLeft}px round ${curRadius}px)`;
+      }
+
+      // Isi form memudar saat ditarik
+      if (bodyRef.current) {
+        bodyRef.current.style.opacity = String(Math.max(0, 1 - deltaY / 90));
+      }
+    } else {
+      // Tarik ke atas dengan resistensi karet
+      const rubber = deltaY * 0.15;
+      content.style.transform = `translate3d(0, ${rubber}px, 0)`;
+    }
   };
 
   const onPointerUpOrCancel = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -147,19 +365,96 @@ function DrawerContent({
 
     const elapsed = Math.max(1, performance.now() - dragRef.current.startTime);
     const deltaY = dragRef.current.currentTranslateY;
-    const velocity = deltaY / elapsed; // px per millisecond
+    const velocity = deltaY / elapsed;
 
-    // Jika ditarik lebih dari 90px atau ditarik cepat ke bawah (flick gesture): tutup drawer
+    const insets = getInsets();
+    const topInset = insets?.topInset ?? 200;
+    const bottomInset = insets?.bottomInset ?? 20;
+    const leftInset = insets?.leftInset ?? 16;
+    const rightInset = insets?.rightInset ?? 16;
+
+    // Ambang 90px atau flick cepat: tutup menyusut ke bentuk tombol
     if (deltaY > 90 || (deltaY > 25 && velocity > 0.35)) {
-      content.style.transition = "transform 220ms cubic-bezier(0.32, 0, 0.67, 0)";
-      content.style.transform = "translate3d(0, 100%, 0)";
-      setTimeout(() => {
+      isClosingRef.current = true;
+      const triggerEl = triggerRef?.current;
+
+      const p = Math.min(1, deltaY / Math.max(120, topInset));
+      const curTop = topInset * p;
+      const curBottom = bottomInset * p;
+      const curLeft = leftInset * p;
+      const curRight = rightInset * p;
+      const curRadius = Math.max(12, 16 - 4 * p);
+
+      const anim = content.animate(
+        [
+          {
+            clipPath: `inset(${curTop}px ${curRight}px ${curBottom}px ${curLeft}px round ${curRadius}px)`,
+            backgroundColor: "var(--color-card, #faf7f1)",
+          },
+          {
+            clipPath: `inset(${topInset}px ${rightInset}px ${bottomInset}px ${leftInset}px round 12px)`,
+            backgroundColor: "var(--color-primary, #1c4539)",
+          },
+        ],
+        {
+          duration: 320,
+          easing: "cubic-bezier(0.32, 0.72, 0, 1)",
+          fill: "forwards",
+        },
+      );
+
+      anim.onfinish = () => {
+        if (triggerEl) triggerEl.style.visibility = "";
         onOpenChange?.(false);
-      }, 190);
+      };
     } else {
-      // Kembalikan ke posisi semula dengan transisi pegas halus
-      content.style.transition = "transform 260ms cubic-bezier(0.16, 1, 0.3, 1)";
-      content.style.transform = "translate3d(0, 0, 0)";
+      // Belum melewati ambang: kembali ke bentuk penuh dengan efek pegas
+      const p = Math.max(0, Math.min(1, deltaY / Math.max(120, topInset)));
+      const curTop = topInset * p;
+      const curBottom = bottomInset * p;
+      const curLeft = leftInset * p;
+      const curRight = rightInset * p;
+      const curRadius = Math.max(12, 16 - 4 * p);
+
+      const springAnim = content.animate(
+        [
+          {
+            clipPath: `inset(${curTop}px ${curRight}px ${curBottom}px ${curLeft}px round ${curRadius}px)`,
+            transform: content.style.transform || "translate3d(0, 0, 0)",
+          },
+          {
+            clipPath: "inset(0px 0px 0px 0px round 16px 16px 0px 0px)",
+            transform: "translate3d(0, 0, 0)",
+          },
+        ],
+        {
+          duration: 300,
+          easing: "cubic-bezier(0.16, 1, 0.3, 1)",
+          fill: "forwards",
+        },
+      );
+
+      if (bodyRef.current) {
+        bodyRef.current.animate(
+          [
+            { opacity: Number(bodyRef.current.style.opacity) || 0.5 },
+            { opacity: 1 },
+          ],
+          { duration: 250, easing: "ease-out", fill: "forwards" },
+        );
+      }
+
+      // PERBAIKAN BUG: Hapus seluruh style inline setelah snap-back selesai
+      springAnim.onfinish = () => {
+        content.style.removeProperty("clip-path");
+        content.style.removeProperty("transform");
+        content.style.removeProperty("transition");
+        content.style.removeProperty("animation");
+        if (bodyRef.current) {
+          bodyRef.current.style.removeProperty("opacity");
+          bodyRef.current.style.removeProperty("transform");
+        }
+      };
     }
   };
 
@@ -172,9 +467,18 @@ function DrawerContent({
 
   return (
     <DrawerPortal>
-      <DrawerOverlay />
+      <DrawerOverlay onClick={performClose} />
       <DialogPrimitive.Content
         ref={contentRef}
+        data-morph={Boolean(triggerRef?.current)}
+        onEscapeKeyDown={(e) => {
+          e.preventDefault();
+          performClose();
+        }}
+        onPointerDownOutside={(e) => {
+          e.preventDefault();
+          performClose();
+        }}
         onCloseAutoFocus={(e) => {
           e.preventDefault();
           props.onCloseAutoFocus?.(e);
@@ -185,7 +489,7 @@ function DrawerContent({
         )}
         {...props}
       >
-        <DrawerDragContext.Provider value={{ dragHandlers }}>
+        <DrawerDragContext.Provider value={{ dragHandlers, requestClose: performClose }}>
           {/* Handle bar penarik: lebar, visual jelas, interaktif dengan kursor desktop & touch Android */}
           <div
             {...dragHandlers}
@@ -195,24 +499,40 @@ function DrawerContent({
           >
             <div className="h-1.5 w-12 shrink-0 rounded-full bg-muted-foreground/30 transition-all duration-200 group-hover:bg-muted-foreground/50 group-active:scale-x-110 group-active:bg-muted-foreground/70" />
           </div>
-          {children}
+
+          <div ref={bodyRef} className="flex flex-1 flex-col overflow-hidden">
+            {children}
+          </div>
         </DrawerDragContext.Provider>
       </DialogPrimitive.Content>
     </DrawerPortal>
   );
 }
 
-function DrawerHeader({ className, ...props }: React.ComponentProps<"div">) {
+function DrawerHeader({ className, children, ...props }: React.ComponentProps<"div">) {
   const dragContext = React.useContext(DrawerDragContext);
   return (
     <div
       {...dragContext?.dragHandlers}
       className={cn(
-        "flex flex-col gap-1 px-5 pt-1 pb-2 cursor-grab active:cursor-grabbing touch-none select-none",
+        "relative flex flex-col gap-1 px-5 pt-1 pb-2 cursor-grab active:cursor-grabbing touch-none select-none",
         className,
       )}
       {...props}
-    />
+    >
+      {children}
+      {dragContext?.requestClose && (
+        <button
+          type="button"
+          onClick={dragContext.requestClose}
+          className="absolute right-3.5 top-1.5 flex size-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-90 cursor-pointer"
+          aria-label="Tutup menu"
+          title="Tutup"
+        >
+          <X className="size-4" />
+        </button>
+      )}
+    </div>
   );
 }
 

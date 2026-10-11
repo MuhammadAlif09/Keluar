@@ -82,6 +82,7 @@ export function KeluarApp() {
   const lastPayer = useExpenseStore((s) => s.lastPayer);
   const restoreData = useExpenseStore((s) => s.restoreData);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const createButtonRef = useRef<HTMLButtonElement>(null);
   const [view, setView] = useState(currentMonth);
   const [filter, setFilter] = useState<FilterId>("all");
   const [formOpen, setFormOpen] = useState(false);
@@ -402,11 +403,11 @@ export function KeluarApp() {
                 <div className="h-1.5 overflow-hidden rounded-full bg-muted">
                   <div
                     className={cn(
-                      "h-full w-full origin-left rounded-full transition-[transform,background-color] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]",
+                      "h-full w-full rounded-full transition-[transform,background-color] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]",
                       overBudget ? "bg-destructive" : "bg-primary",
                     )}
                     style={{
-                      transform: `scaleX(${Math.min(1, Math.max(0, budgetPct / 100))})`,
+                      transform: `translateX(-${100 - Math.min(100, Math.max(0, budgetPct))}%)`,
                     }}
                   />
                 </div>
@@ -486,6 +487,7 @@ export function KeluarApp() {
       <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 bg-gradient-to-t from-background via-background/90 to-transparent pt-8 pb-[max(1.25rem,env(safe-area-inset-bottom))] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
         <div className="pointer-events-auto mx-auto max-w-5xl px-4">
           <Button
+            ref={createButtonRef}
             size="lg"
             className="h-12 w-full rounded-xl font-medium shadow-md shadow-primary/15 transition-all duration-200 active:scale-[0.97] hover:shadow-lg hover:shadow-primary/25 cursor-pointer touch-none"
             onClick={openCreate}
@@ -507,6 +509,7 @@ export function KeluarApp() {
           setFormOpen(open);
           if (!open) setEditing(null);
         }}
+        triggerRef={createButtonRef}
       >
         <DrawerContent>
           <DrawerHeader className="text-center pt-2.5 pb-1">
