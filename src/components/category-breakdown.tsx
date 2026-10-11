@@ -1,3 +1,4 @@
+import { Sparkles } from "lucide-react";
 import { CATEGORIES, type CategoryId } from "@/lib/categories";
 import { formatCompactId, formatRupiah } from "@/lib/format";
 import type { Expense } from "@/store/expenses";
@@ -29,9 +30,17 @@ export function CategoryBreakdown({
 
   if (rows.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground">
-        Belum ada pengeluaran di bulan ini.
-      </p>
+      <div className="flex flex-col items-center justify-center rounded-xl bg-muted/30 border border-dashed border-border/70 px-4 py-7 text-center">
+        <div className="mb-2.5 flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
+          <Sparkles className="size-4.5" />
+        </div>
+        <p className="text-sm font-medium text-foreground">
+          Kosong nih! ✨
+        </p>
+        <p className="mt-1 max-w-xs text-xs text-muted-foreground leading-relaxed">
+          Belum ada pengeluaran yang dicatat di bulan ini. Dompet kamu lagi aman sentosa dan istirahat dulu nih 🏖️
+        </p>
+      </div>
     );
   }
 

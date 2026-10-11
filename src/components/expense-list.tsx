@@ -29,9 +29,9 @@ export function ExpenseList({ expenses, onSelect }: ExpenseListProps) {
   if (groups.length === 0) {
     return (
       <div className="rounded-xl bg-card px-5 py-10 text-center shadow-card">
-        <p className="font-display text-lg font-medium">Belum ada catatan</p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Catat pengeluaran pertama di bulan ini.
+        <p className="font-display text-lg font-medium">Belum ada catatan nih ✨</p>
+        <p className="mt-1 text-sm text-muted-foreground max-w-sm mx-auto leading-relaxed">
+          Bulan ini belum ada pengeluaran yang dicatat. Nikmati hari santaimu atau mulai catat pengeluaran lewat tombol di bawah ya!
         </p>
       </div>
     );
@@ -75,7 +75,7 @@ export function ExpenseList({ expenses, onSelect }: ExpenseListProps) {
                         <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
                           <span className="truncate">
                             {cat.label}
-                            {item.payer ? ` · ${item.payer}` : ""}
+                            {item.payer && item.payer !== "Saya" ? ` · ${item.payer}` : ""}
                           </span>
                           {mark && MarkIcon ? (
                             <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-secondary px-1.5 py-0.5 text-secondary-foreground">

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { CategoryId } from "@/lib/categories";
+import { buildDemoExpenses } from "@/lib/demo-data";
 import {
   loadLedger,
   saveLedger,
@@ -25,6 +26,7 @@ type ExpenseState = StoredLedger & {
   deleteExpense: (id: string) => void;
   setBudget: (amount: number) => void;
   clearAll: () => void;
+  seedIfEmpty: () => void;
 };
 
 function persist(state: ExpenseState) {
@@ -88,6 +90,15 @@ export const useExpenseStore = create<ExpenseState>()((set, get) => ({
     set({ expenses: [], hasSeeded: true });
     persist(get());
   },
+  seedIfEmpty: () => {
+    if (get().hasSeeded || get().expenses.length > 0) return;
+    set({
+      expenses: buildDemoExpenses(),
+      hasSeeded: true,
+      lastPayer: "Ayu",
+    });
+    persist(get());
+  },
 }));
 
 let didHydrate = false;
@@ -98,6 +109,23 @@ export function hydrateLedgerStore() {
   useExpenseStore.setState(loadLedger());
 }
 
+// Compatibility shim for any code expecting Zustand's persist API
+Object.defineProperty(useExpenseStore, "persist", {
+  value: {
+    hasHydrated: () => true,
+    rehydrate: () => {
+      hydrateLedgerStore();
+    },
+    onFinishHydration: (cb: () => void) => {
+      cb();
+      return () => {};
+    },
+  },
+  configurable: true,
+  writable: true,
+});
+
 if (typeof window !== "undefined") {
   hydrateLedgerStore();
 }
+

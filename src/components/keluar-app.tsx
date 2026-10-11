@@ -10,8 +10,14 @@ import {
   isoDate,
   monthPrefix,
 } from "@/lib/format";
+import { recentPayers } from "@/lib/ledger-storage";
 import { cn } from "@/lib/utils";
-import { useExpenseStore, type Expense, type ExpenseDraft } from "@/store/expenses";
+import {
+  hydrateLedgerStore,
+  useExpenseStore,
+  type Expense,
+  type ExpenseDraft,
+} from "@/store/expenses";
 import { CategoryBreakdown } from "@/components/category-breakdown";
 import { ExpenseForm } from "@/components/expense-form";
 import { ExpenseList } from "@/components/expense-list";
@@ -62,6 +68,7 @@ export function KeluarApp() {
   const [view, setView] = useState(currentMonth);
   const [filter, setFilter] = useState<FilterId>("all");
   const [formOpen, setFormOpen] = useState(false);
+  const [formStep, setFormStep] = useState<"category" | "amount" | "details">("category");
   const [editing, setEditing] = useState<Expense | null>(null);
   const [budgetOpen, setBudgetOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -70,19 +77,11 @@ export function KeluarApp() {
   const [budgetDraft, setBudgetDraft] = useState("");
 
   useEffect(() => {
-    const finish = () => {
-      useExpenseStore.getState().seedIfEmpty();
-    };
-    if (useExpenseStore.persist.hasHydrated()) {
-      finish();
-      return;
-    }
-    const unsub = useExpenseStore.persist.onFinishHydration(finish);
-    void useExpenseStore.persist.rehydrate();
-    return unsub;
+    hydrateLedgerStore();
   }, []);
 
   const prefix = monthPrefix(view.year, view.month);
+  const knownPayers = useMemo(() => recentPayers(expenses), [expenses]);
   const monthExpenses = useMemo(
     () => expenses.filter((item) => item.date.startsWith(prefix)),
     [expenses, prefix],
@@ -120,11 +119,13 @@ export function KeluarApp() {
 
   function openCreate() {
     setEditing(null);
+    setFormStep("category");
     setFormOpen(true);
   }
 
   function openEdit(expense: Expense) {
     setEditing(expense);
+    setFormStep("details");
     setFormOpen(true);
   }
 
@@ -273,12 +274,15 @@ export function KeluarApp() {
             </dl>
           </div>
 
-          {isCurrentMonth ? (
-            <div className="rounded-xl bg-card p-5 shadow-card">
-              <h2 className="mb-4 text-sm font-medium">Tujuh hari terakhir</h2>
-              <WeekStrip expenses={expenses} />
+          <div className="rounded-xl bg-card p-5 shadow-card">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-sm font-medium">Tujuh hari terakhir</h2>
+              <span className="text-xs text-muted-foreground font-normal">
+                {isCurrentMonth ? "Minggu ini" : formatMonthTitle(view.year, view.month)}
+              </span>
             </div>
-          ) : null}
+            <WeekStrip expenses={expenses} monthExpenses={monthExpenses} view={view} />
+          </div>
 
           <div className="rounded-xl bg-card p-5 shadow-card">
             <div className="mb-4 flex items-center justify-between">
@@ -318,8 +322,12 @@ export function KeluarApp() {
 
       <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 bg-gradient-to-t from-background via-background/90 to-transparent pt-8 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
         <div className="pointer-events-auto mx-auto max-w-5xl px-4">
-          <Button size="lg" className="h-12 w-full rounded-lg" onClick={openCreate}>
-            <Plus className="size-4" />
+          <Button
+            size="lg"
+            className="h-12 w-full rounded-xl font-medium shadow-md shadow-primary/15 transition-all duration-200 active:scale-[0.97] hover:shadow-lg hover:shadow-primary/25"
+            onClick={openCreate}
+          >
+            <Plus className="size-4 stroke-[2.5]" />
             Catat pengeluaran
           </Button>
         </div>
@@ -333,21 +341,22 @@ export function KeluarApp() {
         }}
       >
         <DrawerContent>
-          <DrawerHeader>
-            <DrawerTitle>
-              {editing ? "Ubah catatan" : "Catat pengeluaran"}
+          <DrawerHeader className="text-center pt-2.5 pb-1">
+            <DrawerTitle className="text-center font-display text-lg font-semibold tracking-tight">
+              {formStep === "category" ? "Kategori" : formStep === "amount" ? "Nominal" : "Detail"}
             </DrawerTitle>
-            <DrawerDescription>
-              {editing
-                ? "Perbarui jumlah, kategori, atau tanggal."
-                : "Tulis jumlah, pilih kategori, simpan."}
+            <DrawerDescription className="sr-only">
+              Form {formStep === "category" ? "kategori" : formStep === "amount" ? "nominal" : "detail"}
             </DrawerDescription>
           </DrawerHeader>
-          <div className="overflow-y-auto">
+          <div className="overflow-y-auto overflow-x-hidden">
             <ExpenseForm
               key={editing?.id ?? "new"}
               initial={editing}
+              knownPayers={knownPayers}
+              defaultPayer=""
               submitLabel={editing ? "Simpan perubahan" : "Simpan"}
+              onStepChange={setFormStep}
               onSubmit={handleSubmit}
               onDelete={editing ? () => setDeleteOpen(true) : undefined}
             />
