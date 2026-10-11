@@ -1,6 +1,5 @@
 import { create } from "zustand";
 import type { CategoryId } from "@/lib/categories";
-import { buildDemoExpenses } from "@/lib/demo-data";
 import {
   loadLedger,
   saveLedger,
@@ -91,13 +90,7 @@ export const useExpenseStore = create<ExpenseState>()((set, get) => ({
     persist(get());
   },
   seedIfEmpty: () => {
-    if (get().hasSeeded || get().expenses.length > 0) return;
-    set({
-      expenses: buildDemoExpenses(),
-      hasSeeded: true,
-      lastPayer: "Ayu",
-    });
-    persist(get());
+    // Demo seeding dihapus sesuai instruksi
   },
 }));
 

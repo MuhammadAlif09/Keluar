@@ -1,6 +1,6 @@
 import { CATEGORY_IDS, type CategoryId } from "@/lib/categories";
-import { buildDemoExpenses } from "@/lib/demo-data";
 import { isMarkId, type MarkId } from "@/lib/marks";
+import { toast } from "sonner";
 
 export const LEDGER_KEY = "keluar-ledger-v2";
 const LEGACY_KEY = "keluar-ledger-v1";
@@ -58,20 +58,25 @@ function emptyLedger(): StoredLedger {
   return {
     expenses: [],
     monthlyBudget: 4_000_000,
-    hasSeeded: false,
+    hasSeeded: true,
     lastPayer: "",
   };
 }
 
 export function saveLedger(data: StoredLedger) {
   if (typeof window === "undefined") return;
-  const payload: StoredLedger = {
-    expenses: data.expenses,
-    monthlyBudget: data.monthlyBudget,
-    hasSeeded: data.hasSeeded,
-    lastPayer: data.lastPayer,
-  };
-  window.localStorage.setItem(LEDGER_KEY, JSON.stringify(payload));
+  try {
+    const payload: StoredLedger = {
+      expenses: data.expenses,
+      monthlyBudget: data.monthlyBudget,
+      hasSeeded: data.hasSeeded,
+      lastPayer: data.lastPayer,
+    };
+    window.localStorage.setItem(LEDGER_KEY, JSON.stringify(payload));
+  } catch (err) {
+    console.error("Gagal menyimpan ke penyimpanan lokal:", err);
+    toast.error("Gagal menyimpan data ke penyimpanan lokal");
+  }
 }
 
 export function loadLedger(): StoredLedger {
@@ -79,14 +84,9 @@ export function loadLedger(): StoredLedger {
 
   const raw = window.localStorage.getItem(LEDGER_KEY) ?? window.localStorage.getItem(LEGACY_KEY);
   if (!raw) {
-    const seeded: StoredLedger = {
-      expenses: buildDemoExpenses(),
-      monthlyBudget: 4_000_000,
-      hasSeeded: true,
-      lastPayer: "Ayu",
-    };
-    saveLedger(seeded);
-    return seeded;
+    const empty = emptyLedger();
+    saveLedger(empty);
+    return empty;
   }
 
   try {
