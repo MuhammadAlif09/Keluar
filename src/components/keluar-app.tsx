@@ -163,8 +163,8 @@ export function KeluarApp() {
   }
 
   return (
-    <div className="min-h-dvh bg-background pb-28 text-foreground">
-      <header className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 pt-6 pb-2">
+    <div className="min-h-dvh bg-background pb-[max(7rem,calc(6rem+env(safe-area-inset-bottom)))] text-foreground">
+      <header className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 pt-[max(1.5rem,env(safe-area-inset-top))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pb-2">
         <div>
           <p className="text-xs font-medium tracking-widest text-muted-foreground uppercase">
             Buku kas
@@ -320,7 +320,7 @@ export function KeluarApp() {
         </section>
       </main>
 
-      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 bg-gradient-to-t from-background via-background/90 to-transparent pt-8 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 bg-gradient-to-t from-background via-background/90 to-transparent pt-8 pb-[max(1.25rem,env(safe-area-inset-bottom))] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
         <div className="pointer-events-auto mx-auto max-w-5xl px-4">
           <Button
             size="lg"
