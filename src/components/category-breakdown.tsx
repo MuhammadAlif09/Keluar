@@ -48,7 +48,7 @@ export function CategoryBreakdown({
     <ul className="flex flex-col gap-3">
       {rows.map((row) => {
         const Icon = row.icon;
-        const width = max > 0 ? Math.max(6, (row.total / max) * 100) : 0;
+        const scale = max > 0 ? Math.max(0.06, row.total / max) : 0;
         const selected = active === row.id;
         return (
           <li key={row.id}>
@@ -73,8 +73,8 @@ export function CategoryBreakdown({
               </div>
               <div className="h-1.5 overflow-hidden rounded-full bg-muted">
                 <div
-                  className="h-full rounded-full bg-primary transition-[width] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
-                  style={{ width: `${width}%` }}
+                  className="h-full w-full origin-left rounded-full bg-primary transition-[transform] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
+                  style={{ transform: `scaleX(${scale})` }}
                   title={formatRupiah(row.total)}
                 />
               </div>

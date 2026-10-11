@@ -68,26 +68,26 @@ export function WeekStrip({ expenses, monthExpenses, view }: WeekStripProps) {
   return (
     <div className="flex items-end justify-between gap-2">
       {days.map((day, i) => {
-        // Jika total 0 (kosong/ngosong), bar berada di garis dasar rata minimal 3px
+        // Jika total 0 (kosong/ngosong), bar berada di garis dasar rata minimal 3px (3/58)
         // Jika total > 0, bar proporsional terhadap pengeluaran bulan tersebut
-        const height =
-          day.total === 0 ? 3 : Math.max(8, Math.round((day.total / maxScale) * 58));
+        const scaleY =
+          day.total === 0 ? 3 / 58 : Math.max(8, Math.round((day.total / maxScale) * 58)) / 58;
 
         return (
           // Gunakan key={i} agar elemen DOM dipertahankan saat pindah bulan,
-          // sehingga transisi CSS height menganimasikan bar menurun/ngosong dengan smooth!
+          // sehingga transisi CSS transform menganimasikan bar menurun/ngosong dengan smooth!
           <div key={i} className="flex flex-1 flex-col items-center gap-2">
             <div className="flex h-16 w-full items-end justify-center">
               <div
                 className={cn(
-                  "w-full max-w-7 rounded-sm transition-[height,background-color] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] will-change-[height]",
+                  "w-full max-w-7 h-[58px] origin-bottom rounded-sm transition-[transform,background-color] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]",
                   day.total === 0
                     ? "bg-muted/40"
                     : day.isToday
                       ? "bg-primary shadow-xs"
                       : "bg-primary/55",
                 )}
-                style={{ height }}
+                style={{ transform: `scaleY(${scaleY})` }}
                 title={
                   day.total > 0
                     ? `${formatRupiah(day.total)} (${format(day.date, "d MMM yyyy", { locale: localeId })})`

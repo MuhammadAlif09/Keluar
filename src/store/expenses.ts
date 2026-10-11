@@ -29,7 +29,11 @@ type ExpenseState = StoredLedger & {
   setBudget: (amount: number) => boolean;
   clearAll: () => boolean;
   retrySave: () => boolean;
-  seedIfEmpty: () => void;
+  restoreData: (data: {
+    expenses: StoredExpense[];
+    monthlyBudget?: number;
+    lastPayer?: string;
+  }) => boolean;
 };
 
 function persist(
@@ -114,8 +118,18 @@ export const useExpenseStore = create<ExpenseState>()((set, get) => ({
   retrySave: () => {
     return persist(get(), set);
   },
-  seedIfEmpty: () => {
-    // Demo seeding dihapus sesuai instruksi
+  restoreData: (data) => {
+    set({
+      expenses: data.expenses,
+      monthlyBudget:
+        typeof data.monthlyBudget === "number" && Number.isFinite(data.monthlyBudget)
+          ? Math.max(0, Math.round(data.monthlyBudget))
+          : get().monthlyBudget,
+      lastPayer: typeof data.lastPayer === "string" ? data.lastPayer : get().lastPayer,
+      hasSeeded: true,
+      saveStatus: "saving",
+    });
+    return persist(get(), set);
   },
 }));
 

@@ -35,6 +35,7 @@ import {
   saveLedger,
   LEDGER_KEY,
   recentPayers,
+  normalizeExpense,
 } from "@/lib/ledger-storage";
 import { useExpenseStore } from "@/store/expenses";
 import {
@@ -229,6 +230,70 @@ describe("Expense Store Actions", () => {
     const success = useExpenseStore.getState().clearAll();
     expect(success).toBe(true);
     expect(useExpenseStore.getState().expenses.length).toBe(0);
+  });
+
+  it("restoreData replaces all transactions, budget, and lastPayer", () => {
+    useExpenseStore.getState().addExpense({
+      amount: 5000,
+      category: "makanan",
+      note: "Permen",
+      date: "2026-10-10",
+      payer: "Saya",
+      mark: "",
+    });
+
+    const restoredExpenses = [
+      {
+        id: "restored-1",
+        amount: 75000,
+        category: "kesehatan" as const,
+        note: "Vitamin C",
+        date: "2026-10-09",
+        createdAt: 5000,
+        payer: "Budi",
+        mark: "" as const,
+      },
+    ];
+
+    const success = useExpenseStore.getState().restoreData({
+      expenses: restoredExpenses,
+      monthlyBudget: 6_000_000,
+      lastPayer: "Budi",
+    });
+
+    expect(success).toBe(true);
+    const state = useExpenseStore.getState();
+    expect(state.expenses.length).toBe(1);
+    expect(state.expenses[0].id).toBe("restored-1");
+    expect(state.expenses[0].amount).toBe(75000);
+    expect(state.monthlyBudget).toBe(6_000_000);
+    expect(state.lastPayer).toBe("Budi");
+    expect(state.saveStatus).toBe("saved");
+  });
+});
+
+describe("Expense Normalization", () => {
+  it("normalizeExpense validates and sanitizes expense objects", () => {
+    const valid = normalizeExpense({
+      id: "exp-1",
+      amount: 25000.7,
+      category: "makanan",
+      note: "Nasi",
+      date: "2026-10-11",
+      payer: " Ani ",
+      mark: "kantor",
+    });
+    expect(valid).not.toBeNull();
+    expect(valid?.amount).toBe(25001);
+    expect(valid?.payer).toBe("Ani");
+    expect(valid?.mark).toBe("kantor");
+
+    // Invalid category
+    expect(normalizeExpense({ id: "1", amount: 100, category: "invalid", date: "2026-10-11" })).toBeNull();
+    // Invalid amount
+    expect(normalizeExpense({ id: "1", amount: "not a number", category: "makanan", date: "2026-10-11" })).toBeNull();
+    // Invalid date
+    expect(normalizeExpense({ id: "1", amount: 100, category: "makanan", date: 12345 })).toBeNull();
   });
 });
 

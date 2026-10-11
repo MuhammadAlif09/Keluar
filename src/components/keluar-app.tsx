@@ -1,5 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Plus, Settings2, Wallet } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Plus,
+  Settings2,
+  Upload,
+  Wallet,
+} from "lucide-react";
 import { toast } from "sonner";
 import { CATEGORIES, type CategoryId } from "@/lib/categories";
 import {
@@ -10,7 +18,11 @@ import {
   isoDate,
   monthPrefix,
 } from "@/lib/format";
-import { recentPayers } from "@/lib/ledger-storage";
+import {
+  normalizeExpense,
+  recentPayers,
+  type StoredExpense,
+} from "@/lib/ledger-storage";
 import { cn } from "@/lib/utils";
 import {
   hydrateLedgerStore,
@@ -67,6 +79,9 @@ export function KeluarApp() {
   const clearAll = useExpenseStore((s) => s.clearAll);
   const saveStatus = useExpenseStore((s) => s.saveStatus);
   const retrySave = useExpenseStore((s) => s.retrySave);
+  const lastPayer = useExpenseStore((s) => s.lastPayer);
+  const restoreData = useExpenseStore((s) => s.restoreData);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [view, setView] = useState(currentMonth);
   const [filter, setFilter] = useState<FilterId>("all");
   const [formOpen, setFormOpen] = useState(false);
@@ -125,6 +140,29 @@ export function KeluarApp() {
     setFormOpen(true);
   }
 
+  const bottomDragRef = useRef<{ startY: number; isTracking: boolean }>({
+    startY: 0,
+    isTracking: false,
+  });
+
+  function onBottomPointerDown(e: React.PointerEvent) {
+    bottomDragRef.current = { startY: e.clientY, isTracking: true };
+  }
+
+  function onBottomPointerMove(e: React.PointerEvent) {
+    if (!bottomDragRef.current.isTracking) return;
+    const deltaY = e.clientY - bottomDragRef.current.startY;
+    // Jika ditarik ke atas lebih dari 18px, buka menu catat pengeluaran
+    if (deltaY < -18) {
+      bottomDragRef.current.isTracking = false;
+      openCreate();
+    }
+  }
+
+  function onBottomPointerUp() {
+    bottomDragRef.current.isTracking = false;
+  }
+
   function openEdit(expense: Expense) {
     setEditing(expense);
     setFormStep("details");
@@ -162,6 +200,112 @@ export function KeluarApp() {
     setBudget(value);
     setBudgetOpen(false);
     toast(value > 0 ? "Anggaran disimpan" : "Anggaran dihapus");
+  }
+
+  function handleBackup() {
+    try {
+      const backupData = {
+        version: 2,
+        exportedAt: new Date().toISOString(),
+        expenses,
+        monthlyBudget,
+        lastPayer,
+      };
+      const today = isoDate(new Date());
+      const fileName = `keluar-backup-${today}.json`;
+      const blob = new Blob([JSON.stringify(backupData, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success("Backup data berhasil diunduh");
+    } catch (err) {
+      console.error("Gagal membuat backup:", err);
+      toast.error("Gagal mengunduh backup data");
+    }
+  }
+
+  function handleRestoreFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result;
+        if (typeof text !== "string" || !text.trim()) {
+          toast.error("File backup kosong atau tidak dapat dibaca");
+          return;
+        }
+
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(text);
+        } catch {
+          toast.error("Format file tidak valid (bukan JSON)");
+          return;
+        }
+
+        if (!parsed || typeof parsed !== "object") {
+          toast.error("Format data backup tidak valid");
+          return;
+        }
+
+        const raw =
+          "state" in parsed &&
+          typeof (parsed as { state: unknown }).state === "object" &&
+          (parsed as { state: unknown }).state
+            ? (parsed as { state: unknown }).state
+            : parsed;
+
+        const row = raw as Record<string, unknown>;
+
+        if (!Array.isArray(row.expenses)) {
+          toast.error("File backup tidak memiliki daftar catatan pengeluaran");
+          return;
+        }
+
+        const validExpenses = row.expenses
+          .map(normalizeExpense)
+          .filter((item): item is StoredExpense => item !== null);
+
+        const newBudget =
+          typeof row.monthlyBudget === "number" && Number.isFinite(row.monthlyBudget)
+            ? Math.max(0, Math.round(row.monthlyBudget))
+            : undefined;
+
+        const newPayer = typeof row.lastPayer === "string" ? row.lastPayer : undefined;
+
+        const success = restoreData({
+          expenses: validExpenses,
+          monthlyBudget: newBudget,
+          lastPayer: newPayer,
+        });
+
+        if (success) {
+          setSettingsOpen(false);
+          toast.success(`${validExpenses.length} catatan dipulihkan`);
+        } else {
+          toast.error("Gagal menyimpan data yang dipulihkan ke penyimpanan");
+        }
+      } catch (err) {
+        console.error("Gagal memulihkan file backup:", err);
+        toast.error("Gagal memulihkan file backup");
+      }
+    };
+
+    reader.onerror = () => {
+      toast.error("Gagal membaca file backup");
+    };
+
+    reader.readAsText(file);
   }
 
   return (
@@ -258,10 +402,12 @@ export function KeluarApp() {
                 <div className="h-1.5 overflow-hidden rounded-full bg-muted">
                   <div
                     className={cn(
-                      "h-full rounded-full transition-[width,background-color] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]",
+                      "h-full w-full origin-left rounded-full transition-[transform,background-color] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]",
                       overBudget ? "bg-destructive" : "bg-primary",
                     )}
-                    style={{ width: `${Math.min(100, budgetPct)}%` }}
+                    style={{
+                      transform: `scaleX(${Math.min(1, Math.max(0, budgetPct / 100))})`,
+                    }}
                   />
                 </div>
               ) : (
@@ -341,8 +487,13 @@ export function KeluarApp() {
         <div className="pointer-events-auto mx-auto max-w-5xl px-4">
           <Button
             size="lg"
-            className="h-12 w-full rounded-xl font-medium shadow-md shadow-primary/15 transition-all duration-200 active:scale-[0.97] hover:shadow-lg hover:shadow-primary/25"
+            className="h-12 w-full rounded-xl font-medium shadow-md shadow-primary/15 transition-all duration-200 active:scale-[0.97] hover:shadow-lg hover:shadow-primary/25 cursor-pointer touch-none"
             onClick={openCreate}
+            onPointerDown={onBottomPointerDown}
+            onPointerMove={onBottomPointerMove}
+            onPointerUp={onBottomPointerUp}
+            onPointerCancel={onBottomPointerUp}
+            title="Klik atau tarik ke atas untuk mencatat pengeluaran"
           >
             <Plus className="size-4 stroke-[2.5]" />
             Catat pengeluaran
@@ -421,6 +572,13 @@ export function KeluarApp() {
               Data tersimpan di perangkat ini.
             </DialogDescription>
           </DialogHeader>
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleRestoreFile}
+            accept=".json,application/json"
+            className="hidden"
+          />
           <div className="flex flex-col gap-2">
             <Button
               variant="outline"
@@ -431,6 +589,22 @@ export function KeluarApp() {
               }}
             >
               Atur anggaran
+            </Button>
+            <Button
+              variant="outline"
+              className="justify-start"
+              onClick={handleBackup}
+            >
+              <Download className="mr-2 size-4" />
+              Backup data (unduh file)
+            </Button>
+            <Button
+              variant="outline"
+              className="justify-start"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Upload className="mr-2 size-4" />
+              Pulihkan dari file backup
             </Button>
             <Button
               variant="outline"

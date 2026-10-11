@@ -27,7 +27,7 @@ function isCategoryId(value: unknown): value is CategoryId {
   return typeof value === "string" && (CATEGORY_IDS as readonly string[]).includes(value);
 }
 
-function normalizeExpense(raw: unknown): StoredExpense | null {
+export function normalizeExpense(raw: unknown): StoredExpense | null {
   if (!raw || typeof raw !== "object") return null;
   const row = raw as Record<string, unknown>;
   if (typeof row.id !== "string" || typeof row.amount !== "number" || !Number.isFinite(row.amount)) {
